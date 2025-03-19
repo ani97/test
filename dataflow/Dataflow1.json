@@ -1,0 +1,186 @@
+{
+	"name": "Dataflow1",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"linkedService": {
+						"referenceName": "wp-ncpl-WorkspaceDefaultStorage",
+						"type": "LinkedServiceReference"
+					},
+					"name": "CSV"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "Target"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink1"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink2"
+				}
+			],
+			"transformations": [
+				{
+					"name": "srccol"
+				},
+				{
+					"name": "Hashkey"
+				},
+				{
+					"name": "Join"
+				},
+				{
+					"name": "split1"
+				},
+				{
+					"name": "Insertauditcolumns"
+				},
+				{
+					"name": "updateauditcolumn"
+				},
+				{
+					"name": "Permission"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          Account_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Account_Type as string,",
+				"          Balance as double",
+				"     ),",
+				"     useSchema: false,",
+				"     allowSchemaDrift: false,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     purgeFiles: true,",
+				"     format: 'delimited',",
+				"     fileSystem: 'onpremdata',",
+				"     folderPath: 'dbo/Accounts',",
+				"     fileName: 'Accounts.csv',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true) ~> CSV",
+				"source(output(",
+				"          Account_ID as integer,",
+				"          Hashkey as long",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'Select Account_ID,Hashkey from Accounts',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> Target",
+				"CSV select(mapColumn(",
+				"          each(match(1==1),",
+				"               concat('src_',$$) = $$)",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> srccol",
+				"srccol derive(src_Hashkey = crc32(concat(toString(src_Account_ID),toString(src_Customer_ID),src_Account_Type,toString(src_Balance)))) ~> Hashkey",
+				"Hashkey, Target lookup(src_Account_ID == Account_ID,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> Join",
+				"Join split(isNull(Account_ID),",
+				"     src_Account_ID==Account_ID && src_Hashkey!=Hashkey,",
+				"     disjoint: true) ~> split1@(Insert, Update)",
+				"split1@Insert derive(src_InsertedBy = 'Dataflow',",
+				"          src_UpdatedBy = 'Dataflow',",
+				"          src_InsertedDate = currentTimestamp(),",
+				"          src_UpdatedDate = currentTimestamp()) ~> Insertauditcolumns",
+				"split1@Update derive(src_UpdatedBy = 'Datadlow-Updated',",
+				"          src_UpdatedDate = currentTimestamp()) ~> updateauditcolumn",
+				"updateauditcolumn alterRow(updateIf(1==1)) ~> Permission",
+				"Insertauditcolumns sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          Account_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Account_Type as string,",
+				"          Balance as decimal(18,2),",
+				"          Insertedby as string,",
+				"          Inserteddate as timestamp,",
+				"          Updatedby as string,",
+				"          Updateddate as date,",
+				"          Hashkey as long",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'Accounts',",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     stagingSchemaName: '',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          Account_ID = src_Account_ID,",
+				"          Customer_ID = src_Customer_ID,",
+				"          Account_Type = src_Account_Type,",
+				"          Balance = src_Balance,",
+				"          Insertedby = src_InsertedBy,",
+				"          Inserteddate = src_InsertedDate,",
+				"          Updatedby = src_UpdatedBy,",
+				"          Updateddate = src_UpdatedDate,",
+				"          Hashkey = src_Hashkey",
+				"     )) ~> sink1",
+				"Permission sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          Account_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Account_Type as string,",
+				"          Balance as decimal(18,2),",
+				"          Insertedby as string,",
+				"          Inserteddate as timestamp,",
+				"          Updatedby as string,",
+				"          Updateddate as date,",
+				"          Hashkey as long",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'Accounts',",
+				"     insertable: false,",
+				"     updateable: true,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     keys:['Account_ID'],",
+				"     stagingSchemaName: '',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          Account_ID = src_Account_ID,",
+				"          Customer_ID = src_Customer_ID,",
+				"          Account_Type = src_Account_Type,",
+				"          Balance = src_Balance,",
+				"          Updatedby = src_UpdatedBy,",
+				"          Updateddate = src_UpdatedDate,",
+				"          Hashkey = src_Hashkey",
+				"     )) ~> sink2"
+			]
+		}
+	}
+}

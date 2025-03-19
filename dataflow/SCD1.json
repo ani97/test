@@ -1,0 +1,188 @@
+{
+	"name": "SCD1",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"linkedService": {
+						"referenceName": "wp-ncpl-WorkspaceDefaultStorage",
+						"type": "LinkedServiceReference"
+					},
+					"name": "source1"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "source2"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink1"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink2"
+				}
+			],
+			"transformations": [
+				{
+					"name": "select1"
+				},
+				{
+					"name": "Hashkey"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "split1"
+				},
+				{
+					"name": "insertauditcolumn"
+				},
+				{
+					"name": "updateauditcolumn"
+				},
+				{
+					"name": "alterRow1"
+				}
+			],
+			"scriptLines": [
+				"parameters{",
+				"     time as string",
+				"}",
+				"source(output(",
+				"          Account_ID as short,",
+				"          Customer_ID as short,",
+				"          Account_Type as string,",
+				"          Balance as double,",
+				"          Updated_At as string",
+				"     ),",
+				"     useSchema: false,",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     moveFiles: ['/dbo/Accounts','backup/accounts'],",
+				"     format: 'delimited',",
+				"     fileSystem: 'onpremdata',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true,",
+				"     wildcardPaths:['dbo/Accounts/*SCD1.csv']) ~> source1",
+				"source(output(",
+				"          Account_ID as integer,",
+				"          Hashkey as long",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'Select Account_ID, Hashkey from Accounts',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> source2",
+				"source1 select(mapColumn(",
+				"          each(match(1==1),",
+				"               concat('src_',$$) = $$)",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"select1 derive(src_Hashkey = crc32(concat(toString(src_Account_ID),toString(src_Customer_ID),src_Account_Type,toString(src_Balance),src_Updated_At))) ~> Hashkey",
+				"Hashkey, source2 lookup(src_Account_ID == Account_ID,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1 split(isNull(Account_ID),",
+				"     src_Account_ID==Account_ID && src_Hashkey!=Hashkey,",
+				"     disjoint: true) ~> split1@(Insert, Update)",
+				"split1@Insert derive(src_Insertedby = 'Dataflow',",
+				"          src_Inserteddate = currentTimestamp(),",
+				"          src_Updatedby = 'Dataflow',",
+				"          src_Updateddate = currentTimestamp()) ~> insertauditcolumn",
+				"split1@Update derive(src_Updatedby = 'Dataflow-Updated',",
+				"          src_Updateddate = currentTimestamp()) ~> updateauditcolumn",
+				"updateauditcolumn alterRow(updateIf(1==1)) ~> alterRow1",
+				"insertauditcolumn sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          Account_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Account_Type as string,",
+				"          Balance as decimal(18,2),",
+				"          Insertedby as string,",
+				"          Inserteddate as timestamp,",
+				"          Updatedby as string,",
+				"          Updateddate as timestamp,",
+				"          Hashkey as long",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'Accounts',",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     stagingSchemaName: '',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          Account_ID = src_Account_ID,",
+				"          Customer_ID = src_Customer_ID,",
+				"          Account_Type = src_Account_Type,",
+				"          Balance = src_Balance,",
+				"          Insertedby = src_Insertedby,",
+				"          Inserteddate = src_Inserteddate,",
+				"          Updatedby = src_Updatedby,",
+				"          Updateddate = src_Updateddate,",
+				"          Hashkey = src_Hashkey",
+				"     )) ~> sink1",
+				"alterRow1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          Account_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Account_Type as string,",
+				"          Balance as decimal(18,2),",
+				"          Insertedby as string,",
+				"          Inserteddate as timestamp,",
+				"          Updatedby as string,",
+				"          Updateddate as timestamp,",
+				"          Hashkey as long",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'Accounts',",
+				"     insertable: false,",
+				"     updateable: true,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     keys:['Account_ID'],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          Account_ID = src_Account_ID,",
+				"          Customer_ID = src_Customer_ID,",
+				"          Account_Type = src_Account_Type,",
+				"          Balance = src_Balance,",
+				"          Updatedby = src_Updatedby,",
+				"          Updateddate = src_Updateddate,",
+				"          Hashkey = src_Hashkey",
+				"     )) ~> sink2"
+			]
+		}
+	}
+}

@@ -1,0 +1,427 @@
+{
+	"name": "pl_onprem_to_azuresql",
+	"properties": {
+		"activities": [
+			{
+				"name": "Read_Watermark_Table",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "ds_onprem_db",
+						"type": "DatasetReference",
+						"parameters": {
+							"schema_name": "dbo",
+							"tablename": "Watermark"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Read_every_table",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Read_Watermark_Table",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Read_Watermark_Table').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Get_max_deltacolumn_val",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlServerSource",
+									"sqlReaderQuery": {
+										"value": "Select max(@{item().DELTACOLUMN}) as maxvalue from\n@{item().SCHEMANAME}.@{item().TABLENAME}",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "ds_onprem_db",
+									"type": "DatasetReference",
+									"parameters": {
+										"schema_name": "' '",
+										"tablename": "' '"
+									}
+								}
+							}
+						},
+						{
+							"name": "Check_LPV",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get_max_deltacolumn_val",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@less(string(item().LPV),string(activity('Get_max_deltacolumn_val').output.firstRow.maxvalue))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "copy_onprem_to_adls",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "Select * from \n@{item().SCHEMANAME}.@{item().TABLENAME}\nwhere @{item().DELTACOLUMN}>'@{item().LPV}'",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "DelimitedTextSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "DelimitedTextWriteSettings",
+													"quoteAllText": true,
+													"fileExtension": ".txt"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "ds_onprem_db",
+												"type": "DatasetReference",
+												"parameters": {
+													"schema_name": "''",
+													"tablename": "''"
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "ds_onprem_data_to_adls",
+												"type": "DatasetReference",
+												"parameters": {
+													"folder_name": {
+														"value": "@item().FOLDERNAME",
+														"type": "Expression"
+													},
+													"filename": {
+														"value": "@concat(item().TABLENAME,'_',utcNow(),item().TABLETYPE,'.csv')",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									},
+									{
+										"name": "update_lpv",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "copy_onprem_to_adls",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[upd_Watermark]",
+											"storedProcedureParameters": {
+												"LPV": {
+													"value": {
+														"value": "@activity('Get_max_deltacolumn_val').output.firstRow.maxvalue",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"TABLENAME": {
+													"value": {
+														"value": "@item().TABLENAME",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "ls_onprem_db",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "Adls_to_Azure_SQL",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "update_lpv",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "DelimitedTextSource",
+												"storeSettings": {
+													"type": "AzureBlobFSReadSettings",
+													"recursive": true,
+													"wildcardFolderPath": {
+														"value": "@item().FOLDERNAME",
+														"type": "Expression"
+													},
+													"wildcardFileName": "*Simple.csv",
+													"enablePartitionDiscovery": false
+												},
+												"formatSettings": {
+													"type": "DelimitedTextReadSettings"
+												}
+											},
+											"sink": {
+												"type": "AzureSqlSink",
+												"writeBehavior": "insert",
+												"sqlWriterUseTableLock": false
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "ls_adls_sql",
+												"type": "DatasetReference"
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "AzureSqlTable2",
+												"type": "DatasetReference",
+												"parameters": {
+													"schemaname": {
+														"value": "@item().SCHEMANAME",
+														"type": "Expression"
+													},
+													"tablename": {
+														"value": "@item().TABLENAME",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									},
+									{
+										"name": "BAckup_data",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "Adls_to_Azure_SQL",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "DelimitedTextSource",
+												"storeSettings": {
+													"type": "AzureBlobFSReadSettings",
+													"recursive": true,
+													"wildcardFolderPath": {
+														"value": "@item().FOLDERNAME",
+														"type": "Expression"
+													},
+													"wildcardFileName": "*Simple.csv",
+													"enablePartitionDiscovery": false
+												},
+												"formatSettings": {
+													"type": "DelimitedTextReadSettings"
+												}
+											},
+											"sink": {
+												"type": "DelimitedTextSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "DelimitedTextWriteSettings",
+													"quoteAllText": true,
+													"fileExtension": ".txt"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "ls_adls_sql",
+												"type": "DatasetReference"
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "backupsink",
+												"type": "DatasetReference",
+												"parameters": {
+													"foldername": {
+														"value": "@item().FOLDERNAME",
+														"type": "Expression"
+													},
+													"filename": {
+														"value": "@concat(item().TABLENAME,'_',utcNow(),item().TABLETYPE,'.csv')",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									},
+									{
+										"name": "Delete_files",
+										"type": "Delete",
+										"dependsOn": [
+											{
+												"activity": "BAckup_data",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"dataset": {
+												"referenceName": "ds_onprem_data_to_adls",
+												"type": "DatasetReference",
+												"parameters": {
+													"folder_name": {
+														"value": "@item().FOLDERNAME",
+														"type": "Expression"
+													},
+													"filename": "''"
+												}
+											},
+											"logStorageSettings": {
+												"linkedServiceName": {
+													"referenceName": "wp-ncpl-WorkspaceDefaultStorage",
+													"type": "LinkedServiceReference"
+												},
+												"path": "onpremdata/backup/deletelog"
+											},
+											"enableLogging": true,
+											"storeSettings": {
+												"type": "AzureBlobFSReadSettings",
+												"recursive": true,
+												"wildcardFileName": "*Simple.csv",
+												"enablePartitionDiscovery": false
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2025-03-10T21:49:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

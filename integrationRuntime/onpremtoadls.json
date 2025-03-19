@@ -1,0 +1,7 @@
+{
+	"name": "onpremtoadls",
+	"properties": {
+		"type": "SelfHosted",
+		"description": "move data from on-prem to ADLS"
+	}
+}

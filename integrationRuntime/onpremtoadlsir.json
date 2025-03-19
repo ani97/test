@@ -1,0 +1,7 @@
+{
+	"name": "onpremtoadlsir",
+	"properties": {
+		"type": "SelfHosted",
+		"description": "IR to move data from on-prem to data lake"
+	}
+}

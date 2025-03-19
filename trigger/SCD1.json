@@ -1,0 +1,25 @@
+{
+	"name": "SCD1",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Started",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "pl_SCD1",
+					"type": "PipelineReference"
+				}
+			}
+		],
+		"type": "BlobEventsTrigger",
+		"typeProperties": {
+			"blobPathBeginsWith": "/onpremdata/blobs/dbo/Accounts/",
+			"blobPathEndsWith": "SCD1.csv",
+			"ignoreEmptyBlobs": true,
+			"scope": "/subscriptions/6c916f59-523a-4b42-9791-3ec3dbf17447/resourceGroups/myncplresourcegroup/providers/Microsoft.Storage/storageAccounts/myncplstorageaccnt",
+			"events": [
+				"Microsoft.Storage.BlobCreated"
+			]
+		}
+	}
+}

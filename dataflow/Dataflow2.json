@@ -1,0 +1,188 @@
+{
+	"name": "Dataflow2",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"linkedService": {
+						"referenceName": "wp-ncpl-WorkspaceDefaultStorage",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sourcecreditscore"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "Target"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink1"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ls_azuresql",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sink2"
+				}
+			],
+			"transformations": [
+				{
+					"name": "srccolumns"
+				},
+				{
+					"name": "Hashkey"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "split1"
+				},
+				{
+					"name": "Updateaudit"
+				},
+				{
+					"name": "Permission"
+				},
+				{
+					"name": "union1"
+				},
+				{
+					"name": "insertauditcolumn"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          CreditScore_ID as short,",
+				"          Customer_ID as short,",
+				"          Credit_Score as short",
+				"     ),",
+				"     useSchema: false,",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     purgeFiles: true,",
+				"     format: 'delimited',",
+				"     fileSystem: 'onpremdata',",
+				"     folderPath: 'dbo/CreditScore',",
+				"     fileName: 'CreditScore.csv',",
+				"     columnDelimiter: ',',",
+				"     escapeChar: '\\\\',",
+				"     quoteChar: '\\\"',",
+				"     columnNamesAsHeader: true) ~> sourcecreditscore",
+				"source(output(",
+				"          CreditScore_ID as integer,",
+				"          Hashkey as long",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'query',",
+				"     store: 'sqlserver',",
+				"     query: 'Select CreditScore_ID, Hashkey from CreditScore where IsActive=1',",
+				"     isolationLevel: 'READ_UNCOMMITTED') ~> Target",
+				"sourcecreditscore select(mapColumn(",
+				"          each(match(1==1),",
+				"               concat('src_',$$) = $$)",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> srccolumns",
+				"srccolumns derive(src_Hashkey = crc32(concat(toString(src_CreditScore_ID),toString(src_Customer_ID),toString(src_Credit_Score)))) ~> Hashkey",
+				"Hashkey, Target lookup(src_CreditScore_ID == CreditScore_ID,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> join",
+				"join split(isNull(CreditScore_ID),",
+				"     src_CreditScore_ID==CreditScore_ID && src_Hashkey!=Hashkey,",
+				"     disjoint: true) ~> split1@(Insert, Update)",
+				"split1@Update derive(src_Updatedby = 'Dataflow-Updated',",
+				"          src_UpdatedDate = currentTimestamp(),",
+				"          src_IsActive = 0) ~> Updateaudit",
+				"Updateaudit alterRow(updateIf(1==1)) ~> Permission",
+				"split1@Insert, split1@Update union(byName: true)~> union1",
+				"union1 derive(src_InsertedBy = 'Dataflow',",
+				"          src_InsertedDate = currentTimestamp(),",
+				"          src_Updateddate = currentTimestamp(),",
+				"          src_IsActive = 1,",
+				"          src_updatedby = 'Dataflow') ~> insertauditcolumn",
+				"Permission sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          CreditScore_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Credit_Score as integer,",
+				"          Insertedby as string,",
+				"          Inserteddate as timestamp,",
+				"          Updatedby as string,",
+				"          Updateddate as date,",
+				"          Hashkey as long,",
+				"          IsActive as integer",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'CreditScore',",
+				"     insertable: false,",
+				"     updateable: true,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     keys:['CreditScore_ID','Hashkey'],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          CreditScore_ID,",
+				"          Updatedby = src_Updatedby,",
+				"          Updateddate = src_UpdatedDate,",
+				"          Hashkey,",
+				"          IsActive = src_IsActive",
+				"     )) ~> sink1",
+				"insertauditcolumn sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          CreditScore_ID as integer,",
+				"          Customer_ID as integer,",
+				"          Credit_Score as integer,",
+				"          Insertedby as string,",
+				"          Inserteddate as timestamp,",
+				"          Updatedby as string,",
+				"          Updateddate as date,",
+				"          Hashkey as long,",
+				"          IsActive as integer",
+				"     ),",
+				"     format: 'table',",
+				"     store: 'sqlserver',",
+				"     schemaName: 'dbo',",
+				"     tableName: 'CreditScore',",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     deletable: false,",
+				"     upsertable: false,",
+				"     stagingSchemaName: '',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          CreditScore_ID = src_CreditScore_ID,",
+				"          Customer_ID = src_Customer_ID,",
+				"          Credit_Score = src_Credit_Score,",
+				"          Insertedby = src_InsertedBy,",
+				"          Inserteddate = src_InsertedDate,",
+				"          Updatedby = src_updatedby,",
+				"          Updateddate = src_Updateddate,",
+				"          Hashkey = src_Hashkey,",
+				"          IsActive = src_IsActive",
+				"     )) ~> sink2"
+			]
+		}
+	}
+}

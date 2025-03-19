@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1",
+	"properties": {
+		"content": {
+			"query": "SELECT TOP 100 *\nFROM OPENROWSET(\n    BULK 'https://myncplstorageaccnt.dfs.core.windows.net/csvfile/people.csv',\n    FORMAT = 'CSV',\n    PARSER_VERSION = '2.0',\n    HEADER_ROW = TRUE\n) \nWITH (\n    [User_Id] VARCHAR(100) ,\n    [First_Name] VARCHAR(100) ,\n    [Last_Name] VARCHAR(100) ,\n    [Sex] VARCHAR(20) ,\n    [Email] VARCHAR(200),\n    [Phone] VARCHAR(200) ,  -- Keeping VARCHAR to avoid BIGINT conversion errors\n    [Date_of_birth] DATE,\n    [Job_Title] VARCHAR(100) \n) AS people;\n\nSelect name,collation_name from sys.databases;\n\nAlter database testing collate Latin1_General_100_CI_AI_SC_UTF8\n\n\nCreate EXTERNAL data SOURCE hide_link\nWith(\n\tLocation='https://myncplstorageaccnt.dfs.core.windows.net/'\n)\n\n\nSELECT TOP 100 *\nFROM OPENROWSET(\n    BULK 'csvfile/people.csv',\n\tDATA_SOURCE='hide_link',\n    FORMAT = 'CSV',\n    PARSER_VERSION = '2.0',\n    HEADER_ROW = TRUE\n) \nWITH (\n    [User_Id] VARCHAR(100) ,\n    [First_Name] VARCHAR(100) ,\n    [Last_Name] VARCHAR(100) ,\n    [Sex] VARCHAR(20) ,\n    [Email] VARCHAR(200),\n    [Phone] VARCHAR(200) ,  -- Keeping VARCHAR to avoid BIGINT conversion errors\n    [Date_of_birth] DATE,\n    [Job_Title] VARCHAR(100) \n) AS people;\n\nCreate view my_view\nAS\nSELECT TOP 100 *\nFROM OPENROWSET(\n    BULK 'csvfile/people.csv',\n\tDATA_SOURCE='hide_storage_link',\n    FORMAT = 'CSV',\n    PARSER_VERSION = '2.0',\n    HEADER_ROW = TRUE\n) \nWITH (\n    [User_Id] VARCHAR(100) ,\n    [First_Name] VARCHAR(100) ,\n    [Last_Name] VARCHAR(100) ,\n    [Sex] VARCHAR(20) ,\n    [Email] VARCHAR(200),\n    [Phone] VARCHAR(200) ,  -- Keeping VARCHAR to avoid BIGINT conversion errors\n    [Date_of_birth] DATE,\n    [Job_Title] VARCHAR(100) \n) AS people;\n\n\nSelect * from my_view\n\n\n\n\n\n\n\n\n\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testing",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
