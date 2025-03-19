@@ -1,0 +1,48 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"workspaceName": {
+			"value": "wp-ncpl"
+		},
+		"AzureSqlDatabase1_connectionString": {
+			"value": ""
+		},
+		"SqlServer1_connectionString": {
+			"value": "integrated security=True;Data Source=ANIKET\\SQLEXPRESS;Initial Catalog=db_ncpl"
+		},
+		"SqlServer1_password": {
+			"value": ""
+		},
+		"ls_azuresql_connectionString": {
+			"value": ""
+		},
+		"ls_onprem_db_connectionString": {
+			"value": ""
+		},
+		"wp-ncpl-WorkspaceDefaultSqlServer_connectionString": {
+			"value": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:wp-ncpl.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"RestService1_properties_typeProperties_url": {
+			"value": "https://jsonplaceholder.typicode.com/"
+		},
+		"SqlServer1_properties_typeProperties_userName": {
+			"value": "ANIKET\\anike"
+		},
+		"wp-ncpl-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"value": "https://myncplstorageaccnt.dfs.core.windows.net"
+		},
+		"SCD1_properties_typeProperties_scope": {
+			"value": "/subscriptions/6c916f59-523a-4b42-9791-3ec3dbf17447/resourceGroups/myncplresourcegroup/providers/Microsoft.Storage/storageAccounts/myncplstorageaccnt"
+		},
+		"SCD2_properties_typeProperties_scope": {
+			"value": "/subscriptions/6c916f59-523a-4b42-9791-3ec3dbf17447/resourceGroups/myncplresourcegroup/providers/Microsoft.Storage/storageAccounts/myncplstorageaccnt"
+		},
+		"Trigger 1_properties_typeProperties_scope": {
+			"value": "/subscriptions/6c916f59-523a-4b42-9791-3ec3dbf17447/resourceGroups/myncplresourcegroup/providers/Microsoft.Storage/storageAccounts/myncplstorageaccnt"
+		},
+		"Trigger 2_properties_typeProperties_scope": {
+			"value": "/subscriptions/6c916f59-523a-4b42-9791-3ec3dbf17447/resourceGroups/myncplresourcegroup/providers/Microsoft.Storage/storageAccounts/myncplstorageaccnt"
+		}
+	}
+}
